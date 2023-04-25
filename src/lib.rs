@@ -17,7 +17,7 @@ pub fn run() {
 	cfg_if! {
 		if #[cfg(target_arch = "wasm32")] {
 			std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-			console_log::init_with_level(log::Level::Info)
+			console_log::init_with_level(log::Level::Debug)
 				.expect("Couldn't initialize logger");
 		} else {
 			use env_logger::Env;
