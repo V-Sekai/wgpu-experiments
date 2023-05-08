@@ -14,11 +14,11 @@
 </head>
 
 <body id="wasm-example">
+	<canvas id="wgpu-canvas"></canvas>
 	<script type="module">
 		import init from "./pkg/wgpu_experiments.js";
 		init().then(() => {
 			console.log("After wasm execution");
 		});
 	</script>
-	<canvas></canvas>
 </body>
