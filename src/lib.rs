@@ -1,6 +1,7 @@
 use cfg_if::cfg_if;
-use color_eyre::Result;
+use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::{debug, info, warn};
+use wgpu::Backend;
 use winit::event::{Event, VirtualKeyCode};
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
@@ -19,14 +20,27 @@ struct State {
 	window: Window,
 }
 impl State {
-	pub async fn new(window: Window) -> Self {
+	pub async fn new(window: Window) -> Result<Self> {
 		let size = window.inner_size();
 
-		let instance = wgpu::Instance::default();
+		let backends =
+			wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::all());
+		let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+			backends,
+			dx12_shader_compiler: Default::default(),
+		});
+
+		log::debug!(
+			"Available wgpu adapters: {:#?}",
+			instance
+				.enumerate_adapters(backends)
+				.map(|a| a.get_info())
+				.collect::<Vec<_>>()
+		);
 
 		// Safety: we store both `window` and `surface` in `State` so we can be sure that `surface`
 		// is dropped first.
-		let surface = unsafe { instance.create_surface(&window) }.unwrap();
+		let surface = unsafe { instance.create_surface(&window) }?;
 
 		let adapter = instance
 			.request_adapter(&wgpu::RequestAdapterOptions {
@@ -37,13 +51,17 @@ impl State {
 				compatible_surface: Some(&surface),
 			})
 			.await
-			.expect("Failed to get a wgpu Adapter");
+			.ok_or(eyre!("Failed to get a wgpu Adapter"))?;
+		if !adapter.is_surface_supported(&surface) {
+			bail!("Adapter does not support surface!");
+		}
+		log::debug!("Chosen adapter: {:#?}", adapter.get_info());
 
 		let (device, queue) = {
 			let limits = if cfg!(target_arch = "wasm32") {
 				wgpu::Limits::downlevel_webgl2_defaults()
 			} else {
-				wgpu::Limits::default()
+				wgpu::Limits::downlevel_defaults()
 			};
 			let desc = wgpu::DeviceDescriptor {
 				label: None,
@@ -53,7 +71,8 @@ impl State {
 			adapter
 				.request_device(&desc, None)
 				.await
-				.expect("Failed to get wgpu Device")
+				.wrap_err("Failed to get wgpu Device")
+				.with_note(|| format!("WGPU Adapter was: {:#?}", adapter.get_info()))?
 		};
 
 		let config = {
@@ -81,19 +100,20 @@ impl State {
 			}
 		};
 
-		Self {
+		Ok(Self {
 			surface,
 			device,
 			queue,
 			config,
 			size,
 			window,
-		}
+		})
 	}
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
-pub async fn run() {
+pub async fn run() -> Result<()> {
+	color_eyre::install()?;
 	cfg_if! {
 		if #[cfg(target_arch = "wasm32")] {
 			std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -101,7 +121,7 @@ pub async fn run() {
 				.expect("Couldn't initialize logger");
 		} else {
 			use env_logger::Env;
-			let env = Env::default().default_filter_or("wgpu_experiments=info");
+			let env = Env::default().default_filter_or("wgpu_experiments=debug");
 			env_logger::Builder::from_env(env).init();
 		}
 	}
@@ -129,7 +149,9 @@ pub async fn run() {
 	}
 
 	let mut input = WinitInputHelper::new();
-	let mut state = State::new(window).await;
+	let mut state = State::new(window)
+		.await
+		.wrap_err("Error when initializing wgpu state")?;
 
 	debug!("Starting event loop");
 	event_loop.run(move |event, _e_loop, control_flow| {
