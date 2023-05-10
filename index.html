@@ -13,12 +13,12 @@
 	</style>
 </head>
 
-<body id="wasm-example">
-	<canvas id="wgpu-canvas"></canvas>
+<body style="display: flex; align-items: stretch; min-height: 100vh; margin: 0px;">
 	<script type="module">
 		import init from "./pkg/wgpu_experiments.js";
 		init().then(() => {
 			console.log("After wasm execution");
 		});
 	</script>
+	<div id="wgpu-parent" style="width: 100%;"></div>
 </body>
