@@ -1,8 +1,9 @@
 use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
+use log::error;
 use log::{debug, info, warn};
-use wgpu::Backend;
-use winit::event::{Event, VirtualKeyCode};
+use winit::dpi::PhysicalSize;
+use winit::event::VirtualKeyCode;
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
@@ -11,13 +12,24 @@ use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+struct GameState {}
+impl GameState {
+	pub fn new() -> Self {
+		GameState {}
+	}
+
+	pub fn update(&mut self, _input: &WinitInputHelper) {
+		// Nothing yet...
+	}
+}
+
 struct RenderState {
+	// Fields dropped in order of declaration.
+	// Surface must be dropped before window.
 	surface: wgpu::Surface,
 	device: wgpu::Device,
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
-	size: winit::dpi::PhysicalSize<u32>,
-	window: Window,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -30,7 +42,7 @@ impl RenderState {
 			dx12_shader_compiler: Default::default(),
 		});
 
-		log::debug!(
+		debug!(
 			"Available wgpu adapters: {:#?}",
 			instance
 				.enumerate_adapters(backends)
@@ -55,7 +67,7 @@ impl RenderState {
 		if !adapter.is_surface_supported(&surface) {
 			bail!("Adapter does not support surface!");
 		}
-		log::debug!("Chosen adapter: {:#?}", adapter.get_info());
+		debug!("Chosen adapter: {:#?}", adapter.get_info());
 
 		let (device, queue) = {
 			let limits = if cfg!(target_arch = "wasm32") {
@@ -107,12 +119,10 @@ impl RenderState {
 			device,
 			queue,
 			config,
-			size,
-			window,
 		})
 	}
 
-	fn render(&mut self) -> Result<()> {
+	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture
@@ -146,6 +156,22 @@ impl RenderState {
 		output.present();
 
 		Ok(())
+	}
+
+	pub fn resize(&mut self, size: PhysicalSize<u32>) {
+		if size.width == 0 && size.height == 0 {
+			return;
+		}
+		self.config.width = size.width;
+		self.config.height = size.height;
+		self.surface.configure(&self.device, &self.config);
+	}
+
+	pub fn size(&self) -> PhysicalSize<u32> {
+		PhysicalSize {
+			width: self.config.width,
+			height: self.config.height,
+		}
 	}
 }
 
@@ -190,37 +216,44 @@ pub async fn run() -> Result<()> {
 	let mut state = RenderState::new(window)
 		.await
 		.wrap_err("Error when initializing wgpu state")?;
+	let mut game_state = GameState::new();
 
 	info!("Starting event loop");
 	event_loop.run(move |event, _e_loop, control_flow| {
-		// Draw the current frame
-		if let Event::RedrawRequested(_) = event {
-			if let Err(e) = state.render() {
-				log::error!("{}", e);
+		// When true, input_helper is done processing events.
+		if !input.update(&event) {
+			return;
+		}
+
+		// Handle close events
+		{
+			if input.key_pressed(VirtualKeyCode::Escape)
+				|| input.close_requested()
+				|| input.destroyed()
+			{
+				info!("Exiting");
 				*control_flow = ControlFlow::Exit;
 				return;
 			}
 		}
 
-		// if true, run app logic
-		if input.update(&event) {
-			// close events
-			{
-				if input.key_pressed(VirtualKeyCode::Escape)
-					|| input.close_requested()
-					|| input.destroyed()
-				{
-					info!("Exiting");
-					*control_flow = ControlFlow::Exit;
-				}
-			}
+		if let Some(size) = input.window_resized() {
+			state.resize(size);
+		}
 
-			update(&input, &mut state);
-			state.window.request_redraw();
+		game_state.update(&input);
+
+		use wgpu::SurfaceError as E;
+		match state.render() {
+			Ok(_) => {}
+			Err(E::Lost) => state.resize(state.size()),
+			Err(E::OutOfMemory) => {
+				error!("Out of memory!");
+				*control_flow = ControlFlow::Exit;
+			}
+			Err(err) => {
+				warn!("Error in event loop: {:?}", err);
+			}
 		}
 	})
-}
-
-fn update(_i: &WinitInputHelper, _s: &mut RenderState) {
-	//todo
 }
