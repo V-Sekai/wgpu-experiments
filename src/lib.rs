@@ -11,7 +11,7 @@ use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-struct State {
+struct RenderState {
 	surface: wgpu::Surface,
 	device: wgpu::Device,
 	queue: wgpu::Queue,
@@ -19,7 +19,7 @@ struct State {
 	size: winit::dpi::PhysicalSize<u32>,
 	window: Window,
 }
-impl State {
+impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
 		let size = window.inner_size();
 
@@ -100,6 +100,8 @@ impl State {
 			}
 		};
 
+		surface.configure(&device, &config);
+
 		Ok(Self {
 			surface,
 			device,
@@ -108,6 +110,42 @@ impl State {
 			size,
 			window,
 		})
+	}
+
+	fn render(&mut self) -> Result<()> {
+		let output = self.surface.get_current_texture()?;
+		let view = output
+			.texture
+			.create_view(&wgpu::TextureViewDescriptor::default());
+		let mut encoder =
+			self.device
+				.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+					label: Some("Render Encoder"),
+				});
+
+		encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+			label: Some("Render Pass"),
+			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+				view: &view,
+				resolve_target: None,
+				ops: wgpu::Operations {
+					load: wgpu::LoadOp::Clear(wgpu::Color {
+						r: 0.1,
+						g: 0.2,
+						b: 0.3,
+						a: 1.0,
+					}),
+					store: true,
+				},
+			})],
+			depth_stencil_attachment: None,
+		});
+
+		let commands = encoder.finish();
+		self.queue.submit([commands]);
+		output.present();
+
+		Ok(())
 	}
 }
 
@@ -149,15 +187,15 @@ pub async fn run() -> Result<()> {
 	}
 
 	let mut input = WinitInputHelper::new();
-	let mut state = State::new(window)
+	let mut state = RenderState::new(window)
 		.await
 		.wrap_err("Error when initializing wgpu state")?;
 
-	debug!("Starting event loop");
+	info!("Starting event loop");
 	event_loop.run(move |event, _e_loop, control_flow| {
 		// Draw the current frame
 		if let Event::RedrawRequested(_) = event {
-			if let Err(e) = render(&state) {
+			if let Err(e) = state.render() {
 				log::error!("{}", e);
 				*control_flow = ControlFlow::Exit;
 				return;
@@ -183,11 +221,6 @@ pub async fn run() -> Result<()> {
 	})
 }
 
-fn render(_s: &State) -> Result<()> {
-	// do something..
-	Ok(())
-}
-
-fn update(_i: &WinitInputHelper, _s: &mut State) {
+fn update(_i: &WinitInputHelper, _s: &mut RenderState) {
 	//todo
 }
