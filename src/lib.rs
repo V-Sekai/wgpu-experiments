@@ -31,6 +31,7 @@ struct RenderState {
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
 	window: Window,
+	pipeline: wgpu::RenderPipeline,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -112,8 +113,63 @@ impl RenderState {
 				view_formats: vec![],
 			}
 		};
-
 		surface.configure(&device, &config);
+
+		let pipeline = {
+			// Can also use `include_wgsl!()`
+			let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+				label: Some("shader.wgsl"),
+				source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+			});
+
+			let pipeline_layout =
+				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+					label: Some("Render Pipeline Layout"),
+					bind_group_layouts: &[],
+					push_constant_ranges: &[],
+				});
+
+			device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+				label: Some("Render Pipeline"),
+				layout: Some(&pipeline_layout),
+				vertex: wgpu::VertexState {
+					module: &shader,
+					entry_point: "vs_main",
+					buffers: &[],
+				},
+				fragment: Some(wgpu::FragmentState {
+					module: &shader,
+					entry_point: "fs_main",
+					targets: &[Some(wgpu::ColorTargetState {
+						// Shader texture format will be same as what we configured earlier
+						format: config.format,
+						// Blend will simply replace old pixel data with new
+						blend: Some(wgpu::BlendState::REPLACE),
+						// We are writing to all RGBA channels
+						write_mask: wgpu::ColorWrites::ALL,
+					})],
+				}),
+				primitive: wgpu::PrimitiveState {
+					topology: wgpu::PrimitiveTopology::TriangleList,
+					strip_index_format: None,
+					front_face: wgpu::FrontFace::Ccw,
+					cull_mode: Some(wgpu::Face::Back),
+					// The next three avoid needing additional features
+					unclipped_depth: false,
+					polygon_mode: wgpu::PolygonMode::Fill,
+					conservative: false,
+				},
+				depth_stencil: None,
+				// We won't be using multisampling, so do 1x
+				multisample: wgpu::MultisampleState {
+					count: 1,
+					mask: !0,
+					alpha_to_coverage_enabled: false,
+				},
+				// I don't understand this one, but the tutorial set it to `None`
+				multiview: None,
+			})
+		};
 
 		Ok(Self {
 			surface,
@@ -121,6 +177,7 @@ impl RenderState {
 			queue,
 			config,
 			window,
+			pipeline,
 		})
 	}
 
@@ -135,23 +192,30 @@ impl RenderState {
 					label: Some("Render Encoder"),
 				});
 
-		encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("Render Pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: &view,
-				resolve_target: None,
-				ops: wgpu::Operations {
-					load: wgpu::LoadOp::Clear(wgpu::Color {
-						r: 0.1,
-						g: 0.2,
-						b: 0.3,
-						a: 1.0,
-					}),
-					store: true,
-				},
-			})],
-			depth_stencil_attachment: None,
-		});
+		{
+			let mut render_pass =
+				encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+					label: Some("Render Pass"),
+					color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+						view: &view,
+						resolve_target: None,
+						ops: wgpu::Operations {
+							load: wgpu::LoadOp::Clear(wgpu::Color {
+								r: 0.1,
+								g: 0.2,
+								b: 0.3,
+								a: 1.0,
+							}),
+							store: true,
+						},
+					})],
+					depth_stencil_attachment: None,
+				});
+
+			render_pass.set_pipeline(&self.pipeline);
+			// Draw *something* with 3 vertices and 1 instance.
+			render_pass.draw(0..3, 0..1);
+		}
 
 		let commands = encoder.finish();
 		self.queue.submit([commands]);
