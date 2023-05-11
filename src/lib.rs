@@ -2,6 +2,7 @@ use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::error;
 use log::{debug, info, warn};
+use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::event::VirtualKeyCode;
 use winit::event_loop::ControlFlow;
@@ -11,6 +12,10 @@ use winit_input_helper::WinitInputHelper;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use crate::types::{Pos, Rgb, Vertex};
+
+mod types;
 
 struct GameState {}
 impl GameState {
@@ -32,6 +37,7 @@ struct RenderState {
 	config: wgpu::SurfaceConfiguration,
 	window: Window,
 	pipeline: wgpu::RenderPipeline,
+	vtx_buf: wgpu::Buffer,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -171,6 +177,18 @@ impl RenderState {
 			})
 		};
 
+		const VERTICES: &[Vertex] = &[
+			Vertex::new(Pos::new(0.0, 0.5, 0.0), Rgb::new(1., 0., 0.)),
+			Vertex::new(Pos::new(-0.5, -0.5, 0.0), Rgb::new(0., 1., 0.)),
+			Vertex::new(Pos::new(0.5, -0.5, 0.0), Rgb::new(0., 0., 1.)),
+		];
+
+		let vtx_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("Vertex Buffer"),
+			contents: bytemuck::cast_slice(VERTICES),
+			usage: wgpu::BufferUsages::VERTEX,
+		});
+
 		Ok(Self {
 			surface,
 			device,
@@ -178,10 +196,11 @@ impl RenderState {
 			config,
 			window,
 			pipeline,
+			vtx_buf,
 		})
 	}
 
-	pub fn render(&mut self, gs: &GameState) -> Result<(), wgpu::SurfaceError> {
+	pub fn render(&mut self, _gs: &GameState) -> Result<(), wgpu::SurfaceError> {
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture
@@ -214,7 +233,7 @@ impl RenderState {
 
 			render_pass.set_pipeline(&self.pipeline);
 			// Draw *something* with 3 vertices and 1 instance.
-			render_pass.draw(0..3, 0..1);
+			render_pass.draw(0..3, 0..1)
 		}
 
 		let commands = encoder.finish();
