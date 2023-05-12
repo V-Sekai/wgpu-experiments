@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::error;
@@ -38,6 +40,7 @@ struct RenderState {
 	window: Window,
 	pipeline: wgpu::RenderPipeline,
 	vtx_buf: wgpu::Buffer,
+	num_vertices: u32,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -141,7 +144,7 @@ impl RenderState {
 				vertex: wgpu::VertexState {
 					module: &shader,
 					entry_point: "vs_main",
-					buffers: &[],
+					buffers: &[Vertex::vb_layout()],
 				},
 				fragment: Some(wgpu::FragmentState {
 					module: &shader,
@@ -197,6 +200,7 @@ impl RenderState {
 			window,
 			pipeline,
 			vtx_buf,
+			num_vertices: VERTICES.len() as u32,
 		})
 	}
 
@@ -232,8 +236,8 @@ impl RenderState {
 				});
 
 			render_pass.set_pipeline(&self.pipeline);
-			// Draw *something* with 3 vertices and 1 instance.
-			render_pass.draw(0..3, 0..1)
+			render_pass.set_vertex_buffer(0, self.vtx_buf.slice(..));
+			render_pass.draw(0..self.num_vertices, 0..1)
 		}
 
 		let commands = encoder.finish();
