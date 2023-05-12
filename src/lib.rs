@@ -4,7 +4,7 @@ use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::error;
 use log::{debug, info, warn};
-use wgpu::util::DeviceExt;
+use wgpu::util::{DeviceExt, RenderEncoder};
 use winit::dpi::PhysicalSize;
 use winit::event::VirtualKeyCode;
 use winit::event_loop::ControlFlow;
@@ -40,7 +40,8 @@ struct RenderState {
 	window: Window,
 	pipeline: wgpu::RenderPipeline,
 	vtx_buf: wgpu::Buffer,
-	num_vertices: u32,
+	idx_buf: wgpu::Buffer,
+	num_indices: u32,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -186,10 +187,18 @@ impl RenderState {
 			Vertex::new(Pos::new(0.5, -0.5, 0.0), Rgb::new(0., 0., 1.)),
 		];
 
+		const INDICES: &[u16] = &[0, 1, 2];
+
 		let vtx_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("Vertex Buffer"),
 			contents: bytemuck::cast_slice(VERTICES),
 			usage: wgpu::BufferUsages::VERTEX,
+		});
+
+		let idx_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("Index Buffer"),
+			contents: bytemuck::cast_slice(INDICES),
+			usage: wgpu::BufferUsages::INDEX,
 		});
 
 		Ok(Self {
@@ -200,7 +209,8 @@ impl RenderState {
 			window,
 			pipeline,
 			vtx_buf,
-			num_vertices: VERTICES.len() as u32,
+			idx_buf,
+			num_indices: INDICES.len() as u32,
 		})
 	}
 
@@ -237,7 +247,10 @@ impl RenderState {
 
 			render_pass.set_pipeline(&self.pipeline);
 			render_pass.set_vertex_buffer(0, self.vtx_buf.slice(..));
-			render_pass.draw(0..self.num_vertices, 0..1)
+			render_pass
+				.set_index_buffer(self.idx_buf.slice(..), wgpu::IndexFormat::Uint16);
+			// render_pass.draw(0..self.num_vertices, 0..1)
+			render_pass.draw_indexed(0..self.num_indices, 0, 0..1)
 		}
 
 		let commands = encoder.finish();
