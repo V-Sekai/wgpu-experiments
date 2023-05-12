@@ -42,6 +42,7 @@ struct RenderState {
 	vtx_buf: wgpu::Buffer,
 	idx_buf: wgpu::Buffer,
 	num_indices: u32,
+	diffuse_bind_group: wgpu::BindGroup,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -125,6 +126,87 @@ impl RenderState {
 		};
 		surface.configure(&device, &config);
 
+		// Create diffuse texture
+		let (diffuse_bind_group, texture_bind_group_layout) = {
+			let tex_view_dim = wgpu::TextureViewDimension::D2;
+
+			let texture = {
+				use image::GenericImageView;
+				let img = image::load_from_memory(include_bytes!("tree.png")).unwrap();
+				let dims = img.dimensions();
+				let rgba = img.into_rgba8();
+
+				let texture_size = wgpu::Extent3d {
+					width: dims.0,
+					height: dims.1,
+					depth_or_array_layers: 1,
+				};
+
+				device.create_texture_with_data(
+					&queue,
+					&wgpu::TextureDescriptor {
+						label: Some("Diffuse Texture"),
+						size: texture_size,
+						mip_level_count: 1,
+						sample_count: 1,
+						dimension: tex_view_dim.compatible_texture_dimension(),
+						format: wgpu::TextureFormat::Rgba8UnormSrgb,
+						usage: wgpu::TextureUsages::TEXTURE_BINDING
+							| wgpu::TextureUsages::COPY_DST,
+						view_formats: &[],
+					},
+					&rgba,
+				)
+			};
+			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+			// TODO: The tutorial does this one manually instead of default.
+			let sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+
+			let layout =
+				device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+					label: Some("Texture Bind Group Layout"),
+					entries: &[
+						wgpu::BindGroupLayoutEntry {
+							binding: 0,
+							visibility: wgpu::ShaderStages::FRAGMENT,
+							ty: wgpu::BindingType::Texture {
+								sample_type: wgpu::TextureSampleType::Float {
+									filterable: true,
+								},
+								view_dimension: tex_view_dim,
+								multisampled: texture.sample_count() > 1,
+							},
+							// Not an array, so we use `None`
+							count: None,
+						},
+						wgpu::BindGroupLayoutEntry {
+							binding: 1,
+							visibility: wgpu::ShaderStages::FRAGMENT,
+							ty: wgpu::BindingType::Sampler(
+								wgpu::SamplerBindingType::Filtering,
+							),
+							count: None,
+						},
+					],
+				});
+
+			let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+				label: Some("diffuse_bind_group"),
+				layout: &layout,
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: wgpu::BindingResource::TextureView(&view),
+					},
+					wgpu::BindGroupEntry {
+						binding: 1,
+						resource: wgpu::BindingResource::Sampler(&sampler),
+					},
+				],
+			});
+			(bind_group, layout)
+		};
+
 		let pipeline = {
 			// Can also use `include_wgsl!()`
 			let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -135,7 +217,7 @@ impl RenderState {
 			let pipeline_layout =
 				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Render Pipeline Layout"),
-					bind_group_layouts: &[],
+					bind_group_layouts: &[&texture_bind_group_layout],
 					push_constant_ranges: &[],
 				});
 
@@ -211,6 +293,7 @@ impl RenderState {
 			vtx_buf,
 			idx_buf,
 			num_indices: INDICES.len() as u32,
+			diffuse_bind_group,
 		})
 	}
 
@@ -249,6 +332,7 @@ impl RenderState {
 			render_pass.set_vertex_buffer(0, self.vtx_buf.slice(..));
 			render_pass
 				.set_index_buffer(self.idx_buf.slice(..), wgpu::IndexFormat::Uint16);
+			render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
 			// render_pass.draw(0..self.num_vertices, 0..1)
 			render_pass.draw_indexed(0..self.num_indices, 0, 0..1)
 		}
