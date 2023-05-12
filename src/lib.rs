@@ -1,3 +1,6 @@
+mod tex2d;
+mod vertex;
+
 use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::error;
@@ -13,9 +16,8 @@ use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::types::{Pos, Uv, Vertex};
-
-mod types;
+use crate::tex2d::Tex2d;
+use crate::vertex::{Pos, Uv, Vertex};
 
 struct GameState {}
 impl GameState {
@@ -35,7 +37,7 @@ struct RenderState {
 	device: wgpu::Device,
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
-	window: Window,
+	_window: Window,
 	pipeline: wgpu::RenderPipeline,
 	vtx_buf: wgpu::Buffer,
 	idx_buf: wgpu::Buffer,
@@ -124,87 +126,28 @@ impl RenderState {
 		};
 		surface.configure(&device, &config);
 
-		// Create diffuse texture
-		let (diffuse_bind_group, texture_bind_group_layout) = {
-			let tex_view_dim = wgpu::TextureViewDimension::D2;
+		let diffuse_tex = Tex2d::new_from_img_bytes(
+			&device,
+			&queue,
+			include_bytes!("tree.png"),
+			Some("Diffuse Texture"),
+		);
 
-			let texture = {
-				use image::GenericImageView;
-				let img = image::load_from_memory(include_bytes!("tree.png")).unwrap();
-				let dims = img.dimensions();
-				let rgba = img.into_rgba8();
-
-				let texture_size = wgpu::Extent3d {
-					width: dims.0,
-					height: dims.1,
-					depth_or_array_layers: 1,
-				};
-
-				device.create_texture_with_data(
-					&queue,
-					&wgpu::TextureDescriptor {
-						label: Some("Diffuse Texture"),
-						size: texture_size,
-						mip_level_count: 1,
-						sample_count: 1,
-						dimension: tex_view_dim.compatible_texture_dimension(),
-						format: wgpu::TextureFormat::Rgba8UnormSrgb,
-						usage: wgpu::TextureUsages::TEXTURE_BINDING
-							| wgpu::TextureUsages::COPY_DST,
-						view_formats: &[],
-					},
-					&rgba,
-				)
-			};
-			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-			// TODO: The tutorial does this one manually instead of default.
-			let sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
-
-			let layout =
-				device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-					label: Some("Texture Bind Group Layout"),
-					entries: &[
-						wgpu::BindGroupLayoutEntry {
-							binding: 0,
-							visibility: wgpu::ShaderStages::FRAGMENT,
-							ty: wgpu::BindingType::Texture {
-								sample_type: wgpu::TextureSampleType::Float {
-									filterable: true,
-								},
-								view_dimension: tex_view_dim,
-								multisampled: texture.sample_count() > 1,
-							},
-							// Not an array, so we use `None`
-							count: None,
-						},
-						wgpu::BindGroupLayoutEntry {
-							binding: 1,
-							visibility: wgpu::ShaderStages::FRAGMENT,
-							ty: wgpu::BindingType::Sampler(
-								wgpu::SamplerBindingType::Filtering,
-							),
-							count: None,
-						},
-					],
-				});
-
-			let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-				label: Some("diffuse_bind_group"),
-				layout: &layout,
-				entries: &[
-					wgpu::BindGroupEntry {
-						binding: 0,
-						resource: wgpu::BindingResource::TextureView(&view),
-					},
-					wgpu::BindGroupEntry {
-						binding: 1,
-						resource: wgpu::BindingResource::Sampler(&sampler),
-					},
-				],
-			});
-			(bind_group, layout)
-		};
-
+		let bind_group_layout = Tex2d::layout(&device);
+		let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("diffuse_bind_group"),
+			layout: &bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&diffuse_tex.view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(&diffuse_tex.sampler),
+				},
+			],
+		});
 		let pipeline = {
 			// Can also use `include_wgsl!()`
 			let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -215,7 +158,7 @@ impl RenderState {
 			let pipeline_layout =
 				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Render Pipeline Layout"),
-					bind_group_layouts: &[&texture_bind_group_layout],
+					bind_group_layouts: &[&bind_group_layout],
 					push_constant_ranges: &[],
 				});
 
@@ -289,7 +232,7 @@ impl RenderState {
 			device,
 			queue,
 			config,
-			window,
+			_window: window,
 			pipeline,
 			vtx_buf,
 			idx_buf,
