@@ -1,10 +1,8 @@
-use std::borrow::Borrow;
-
 use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::error;
 use log::{debug, info, warn};
-use wgpu::util::{DeviceExt, RenderEncoder};
+use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::event::VirtualKeyCode;
 use winit::event_loop::ControlFlow;
@@ -15,7 +13,7 @@ use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::types::{Pos, Rgb, Vertex};
+use crate::types::{Pos, Uv, Vertex};
 
 mod types;
 
@@ -263,13 +261,16 @@ impl RenderState {
 			})
 		};
 
+		// Describes a square.
 		const VERTICES: &[Vertex] = &[
-			Vertex::new(Pos::new(0.0, 0.5, 0.0), Rgb::new(1., 0., 0.)),
-			Vertex::new(Pos::new(-0.5, -0.5, 0.0), Rgb::new(0., 1., 0.)),
-			Vertex::new(Pos::new(0.5, -0.5, 0.0), Rgb::new(0., 0., 1.)),
+			// Starts at top left of square, goes Ccw
+			Vertex::new(Pos::new(-0.5, 0.5, 0.0), Uv { u: 0.0, v: 0.0 }),
+			Vertex::new(Pos::new(-0.5, -0.5, 0.0), Uv { u: 0.0, v: 1.0 }),
+			Vertex::new(Pos::new(0.5, -0.5, 0.0), Uv { u: 1.0, v: 1.0 }),
+			Vertex::new(Pos::new(0.5, 0.5, 0.0), Uv { u: 1.0, v: 0.0 }),
 		];
 
-		const INDICES: &[u16] = &[0, 1, 2];
+		const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
 		let vtx_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("Vertex Buffer"),

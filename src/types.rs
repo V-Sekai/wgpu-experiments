@@ -15,31 +15,25 @@ impl Pos {
 
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 #[repr(C)]
-pub struct Rgb {
-	pub r: f32,
-	pub g: f32,
-	pub b: f32,
-}
-impl Rgb {
-	pub const fn new(r: f32, g: f32, b: f32) -> Self {
-		Self { r, g, b }
-	}
+pub struct Uv {
+	pub u: f32,
+	pub v: f32,
 }
 
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 #[repr(C)]
 pub struct Vertex {
 	pub pos: Pos,
-	pub color: Rgb,
+	pub uv: Uv,
 }
 impl Vertex {
-	pub const fn new(pos: Pos, color: Rgb) -> Self {
-		Vertex { pos, color }
+	pub const fn new(pos: Pos, uv: Uv) -> Self {
+		Vertex { pos, uv }
 	}
 
 	pub const fn vb_layout() -> wgpu::VertexBufferLayout<'static> {
 		const ATTRIBS: [wgpu::VertexAttribute; 2] =
-			wgpu::vertex_attr_array![0 => Float32x3, 1=> Float32x3];
+			wgpu::vertex_attr_array![0 => Float32x3, 1=> Float32x2];
 		wgpu::VertexBufferLayout {
 			array_stride: std::mem::size_of::<Vertex>() as _,
 			step_mode: wgpu::VertexStepMode::Vertex,
