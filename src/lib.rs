@@ -1,3 +1,4 @@
+mod camera;
 mod tex2d;
 mod vertex;
 
@@ -5,6 +6,8 @@ use cfg_if::cfg_if;
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
 use log::error;
 use log::{debug, info, warn};
+use nalgebra::geometry::{IsometryMatrix3, Point3};
+use nalgebra::{point, vector, Vector3};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::event::VirtualKeyCode;
@@ -16,6 +19,7 @@ use winit_input_helper::WinitInputHelper;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::camera::Camera;
 use crate::tex2d::Tex2d;
 use crate::vertex::{Pos, Uv, Vertex};
 
@@ -34,15 +38,18 @@ struct RenderState {
 	// Fields dropped in order of declaration.
 	// Surface must be dropped before window.
 	surface: wgpu::Surface,
+	_window: Window,
 	device: wgpu::Device,
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
-	_window: Window,
 	pipeline: wgpu::RenderPipeline,
 	vtx_buf: wgpu::Buffer,
 	idx_buf: wgpu::Buffer,
 	num_indices: u32,
 	diffuse_bind_group: wgpu::BindGroup,
+	camera: Camera,
+	camera_buf: wgpu::Buffer,
+	camera_bind_group: wgpu::BindGroup,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -132,11 +139,10 @@ impl RenderState {
 			include_bytes!("tree.png"),
 			Some("Diffuse Texture"),
 		);
-
-		let bind_group_layout = Tex2d::layout(&device);
+		let tex_bind_group_layout = Tex2d::layout(&device);
 		let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("diffuse_bind_group"),
-			layout: &bind_group_layout,
+			layout: &tex_bind_group_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
@@ -148,6 +154,54 @@ impl RenderState {
 				},
 			],
 		});
+
+		let camera = {
+			// to_radians() wasn't const yet :(
+			const FOVY: f32 = 45.0 / 180.0 * std::f32::consts::PI;
+			const ZNEAR: f32 = 0.1;
+			const ZFAR: f32 = 100.0;
+			const EYE: Point3<f32> = point![0., 0., 1.];
+			const ORIGIN: Point3<f32> = point![0., 0., 0.];
+			const UP: Vector3<f32> = vector![0., 1., 0.];
+			Camera {
+				view: IsometryMatrix3::look_at_rh(&EYE, &ORIGIN, &UP),
+				proj: nalgebra::geometry::Perspective3::new(
+					config.width as f32 / config.height as f32,
+					FOVY,
+					ZNEAR,
+					ZFAR,
+				),
+			}
+		};
+		let camera_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("Camera Uniform"),
+			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+			contents: bytemuck::cast_slice(&[camera.proj_view()]),
+		});
+		let camera_bind_group_layout =
+			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+				label: Some("Camera Bind Group Layout"),
+				entries: &[wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						// We could specify this for more performance, but meh
+						min_binding_size: None,
+					},
+					count: None,
+				}],
+			});
+		let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("camera_bind_group"),
+			layout: &camera_bind_group_layout,
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: camera_buf.as_entire_binding(),
+			}],
+		});
+
 		let pipeline = {
 			// Can also use `include_wgsl!()`
 			let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -158,7 +212,10 @@ impl RenderState {
 			let pipeline_layout =
 				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Render Pipeline Layout"),
-					bind_group_layouts: &[&bind_group_layout],
+					bind_group_layouts: &[
+						&tex_bind_group_layout,
+						&camera_bind_group_layout,
+					],
 					push_constant_ranges: &[],
 				});
 
@@ -229,15 +286,18 @@ impl RenderState {
 
 		Ok(Self {
 			surface,
+			_window: window,
 			device,
 			queue,
 			config,
-			_window: window,
 			pipeline,
 			vtx_buf,
 			idx_buf,
 			num_indices: INDICES.len() as u32,
 			diffuse_bind_group,
+			camera,
+			camera_buf,
+			camera_bind_group,
 		})
 	}
 
@@ -273,10 +333,13 @@ impl RenderState {
 				});
 
 			render_pass.set_pipeline(&self.pipeline);
+
 			render_pass.set_vertex_buffer(0, self.vtx_buf.slice(..));
 			render_pass
 				.set_index_buffer(self.idx_buf.slice(..), wgpu::IndexFormat::Uint16);
+
 			render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+			render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 			// render_pass.draw(0..self.num_vertices, 0..1)
 			render_pass.draw_indexed(0..self.num_indices, 0, 0..1)
 		}
