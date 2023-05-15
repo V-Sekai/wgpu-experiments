@@ -1,4 +1,3 @@
-use log::trace;
 use nalgebra::geometry::{IsometryMatrix3, Perspective3};
 use nalgebra::{matrix, Matrix4, Translation3};
 use winit::event::VirtualKeyCode;

@@ -1,7 +1,9 @@
 use color_eyre::{eyre::bail, eyre::eyre, eyre::WrapErr, Help, Result};
+use instant::Instant;
 use log::{debug, warn};
 use nalgebra::geometry::{IsometryMatrix3, Point3};
 use nalgebra::{point, vector, Vector3};
+use std::fmt::Write;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
@@ -15,7 +17,7 @@ pub struct RenderState {
 	// Fields dropped in order of declaration.
 	// Surface must be dropped before window.
 	surface: wgpu::Surface,
-	_window: Window,
+	window: Window,
 	device: wgpu::Device,
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
@@ -27,6 +29,10 @@ pub struct RenderState {
 	camera: Camera,
 	camera_buf: wgpu::Buffer,
 	camera_bind_group: wgpu::BindGroup,
+	fps: f32,
+	last_render: Instant,
+	last_title: Instant,
+	title: String,
 }
 impl RenderState {
 	pub async fn new(window: Window) -> Result<Self> {
@@ -264,7 +270,7 @@ impl RenderState {
 
 		Ok(Self {
 			surface,
-			_window: window,
+			window,
 			device,
 			queue,
 			config,
@@ -276,6 +282,10 @@ impl RenderState {
 			camera,
 			camera_buf,
 			camera_bind_group,
+			fps: 0.,
+			last_render: Instant::now(),
+			last_title: Instant::now(),
+			title: String::new(),
 		})
 	}
 
@@ -289,6 +299,24 @@ impl RenderState {
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+		// Do fps calculation
+		{
+			// Values closer to 1 weight new values more.
+			const SMOOTHING_FACTOR: f32 = 0.2;
+			let now = Instant::now();
+			let elapsed = now - self.last_render;
+			let new_fps = 1.0 / elapsed.as_secs_f32();
+			self.fps = self.fps * (1.0 - SMOOTHING_FACTOR) + new_fps * SMOOTHING_FACTOR;
+			self.last_render = now;
+
+			if (now - self.last_title).as_millis() > 100 {
+				self.title.clear();
+				write!(&mut self.title, "FPS: {:.1}", self.fps).ok();
+				self.window.set_title(&self.title);
+				self.last_title = now;
+			}
+		}
+
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture

@@ -1872,6 +1872,7 @@ dependencies = [
  "env_logger",
  "getrandom",
  "image",
+ "instant",
  "log",
  "nalgebra",
  "pollster",

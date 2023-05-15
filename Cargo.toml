@@ -14,6 +14,7 @@ cfg-if = "1"
 color-eyre = "0.6"
 env_logger = "0.10"
 image = { version = "0.24.6", default-features = false, features = ["jpeg", "png"] }
+instant = "0.1.12"
 log = "0.4"
 nalgebra = { version = "0.32.2", features = ["convert-bytemuck"] }
 pollster = "0.3.0"
