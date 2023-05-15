@@ -22,8 +22,21 @@ jobs:
       - name: Build Wasm
         run: wasm-pack build --target web
 
+      - name: Sanity check
+        run: |
+          tree -L 3
+          ls -al ./pkg
+
+      - name: Remove gitignore pepega
+        run: rm .gitignore
+
       - name: Deploy Wasm
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: demo
           folder: .
+          clean: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # clean-exclude: |
+          #   ./pkg/
+          #   ./target/wasm32-unknown-unknown/release/wgpu_experiments.wasm
