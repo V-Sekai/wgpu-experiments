@@ -1,0 +1,29 @@
+name: Deployment
+on:
+  push:
+    branches: [main]
+
+jobs:
+  docs:
+    name: Deploy Demo to Github Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          # Optional version of wasm-pack to install(eg. 'v0.9.1', 'latest')
+          version: "v0.11.0"
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Wasm
+        run: wasm-pack build --target web
+
+      - name: Deploy Wasm
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: demo
+          folder: .
