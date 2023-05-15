@@ -20,21 +20,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build Wasm
-        run: wasm-pack build --target web
+        run: wasm-pack build --target web --out-dir static/pkg
+
+      - name: Remove gitignore to make deploy happy
+        run: rm static/pkg/.gitignore
 
       - name: Sanity check
         run: |
           tree -L 3
-          ls -al ./pkg
-
-      - name: Remove gitignore pepega
-        run: rm .gitignore
+          ls -al ./static
 
       - name: Deploy Wasm
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: demo
-          folder: .
+          folder: static
           clean: false
           token: ${{ secrets.GITHUB_TOKEN }}
           # clean-exclude: |
