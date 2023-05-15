@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Learn WGPU</title>
+	<style>
+		canvas {
+			background-color: black;
+		}
+	</style>
+</head>
+
+<body style="display: flex; align-items: stretch; min-height: 100vh; margin: 0px;">
+	<script type="module">
+		import init from "./pkg/wgpu_experiments.js";
+		init().then(() => {
+			console.log("After wasm execution");
+		});
+	</script>
+	<div id="wgpu-parent" style="width: 100%;"></div>
+</body>

@@ -1,0 +1,44 @@
+[package]
+name = "wgpu-experiments"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = { version = "1.13.1", features = ["derive"] }
+cfg-if = "1"
+color-eyre = "0.6"
+env_logger = "0.10"
+image = { version = "0.24.6", default-features = false, features = ["jpeg", "png"] }
+instant = "0.1.12"
+log = "0.4"
+nalgebra = { version = "0.32.2", features = ["convert-bytemuck"] }
+pollster = "0.3.0"
+rand = "0.8.5"
+web-sys = "0.3"
+wgpu = "0.16"
+winit = "0.28"
+winit_input_helper = "0.14"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+console_log = "1"
+wgpu = { version = "0.16", features = ["webgl"]}
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Window",
+    "Element",
+    "HtmlCanvasElement",
+    "CssStyleDeclaration",
+    "HtmlElement",
+]}
+getrandom = {version = "0.2", features = ["js"] }
+
+[profile.release]
+debug = true
