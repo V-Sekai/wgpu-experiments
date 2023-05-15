@@ -92,6 +92,8 @@ pub async fn run() -> Result<()> {
 			state.resize(size);
 		}
 
+		state.update(&input);
+
 		use wgpu::SurfaceError as E;
 		match state.render() {
 			Ok(_) => {}

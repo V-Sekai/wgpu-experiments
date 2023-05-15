@@ -5,6 +5,7 @@ use nalgebra::{point, vector, Vector3};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
+use winit_input_helper::WinitInputHelper;
 
 use crate::camera::Camera;
 use crate::tex2d::Tex2d;
@@ -147,6 +148,7 @@ impl RenderState {
 					ZNEAR,
 					ZFAR,
 				),
+				speed: 0.2,
 			}
 		};
 		let camera_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -275,6 +277,15 @@ impl RenderState {
 			camera_buf,
 			camera_bind_group,
 		})
+	}
+
+	pub fn update(&mut self, input: &WinitInputHelper) {
+		self.camera.update(input);
+		self.queue.write_buffer(
+			&self.camera_buf,
+			0,
+			bytemuck::cast_slice(&[self.camera.proj_view()]),
+		);
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
